@@ -2315,7 +2315,7 @@ async def _enrich_result_with_jira(
 
 
 async def _enrich_result_with_tests_repo_matches(
-    failures: list[FailureAnalysis | ChildJobAnalysis],
+    failures: Sequence[FailureAnalysis | ChildJobAnalysis],
     settings: Settings,
     ai_provider: str = "",
     ai_model: str = "",
@@ -3008,7 +3008,9 @@ async def _enqueue_non_jenkins_analysis(
     if analysis_type == "prow" and body.prow_job_name:
         initial_result["job_name"] = body.prow_job_name
         if body.build_id and body.build_id.isdigit():
-            initial_result["build_number"] = body.build_id  # String — Prow IDs exceed JS MAX_SAFE_INTEGER
+            initial_result["build_number"] = (
+                body.build_id
+            )  # String — Prow IDs exceed JS MAX_SAFE_INTEGER
     initial_result["request_params"]["submitted_by"] = username
     _stamp_reanalysis_metadata(
         initial_result["request_params"],
@@ -3204,7 +3206,9 @@ async def _process_non_jenkins_analysis(
         if body.type == "prow" and body.prow_job_name:
             data["job_name"] = body.prow_job_name
             if body.build_id and body.build_id.isdigit():
-                data["build_number"] = body.build_id  # String — Prow IDs exceed JS MAX_SAFE_INTEGER
+                data["build_number"] = (
+                    body.build_id
+                )  # String — Prow IDs exceed JS MAX_SAFE_INTEGER
 
     def _stamp_source_warnings(data: dict) -> None:
         """Attach source warnings (GCS errors, oversize artifacts) to result."""
@@ -3222,7 +3226,11 @@ async def _process_non_jenkins_analysis(
     repo_manager: RepositoryManager | None = None
     source_result = None  # set after source.fetch(); used by _stamp_source_warnings
     # Use real job identity for metadata matching (display_name may have UUID suffix)
-    metadata_job_name = body.prow_job_name if body.type == "prow" and body.prow_job_name else display_name
+    metadata_job_name = (
+        body.prow_job_name
+        if body.type == "prow" and body.prow_job_name
+        else display_name
+    )
 
     try:
         logger.info(
@@ -3298,7 +3306,9 @@ async def _process_non_jenkins_analysis(
         # Pre-flight: verify AI is reachable before spawning parallel tasks
         _preflight_build_number: int | str | None = None
         if body.type == "prow" and body.build_id and body.build_id.isdigit():
-            _preflight_build_number = body.build_id  # String — Prow IDs exceed JS MAX_SAFE_INTEGER
+            _preflight_build_number = (
+                body.build_id
+            )  # String — Prow IDs exceed JS MAX_SAFE_INTEGER
         if not await _preflight_sidecar_check(
             job_id,
             ai_provider,
@@ -3511,9 +3521,7 @@ async def _process_non_jenkins_analysis(
                     f"All {failed_group_count} failure group(s) failed during analysis "
                     f"({len(test_failures)} test failures, {unique_errors} unique errors)"
                 )
-                logger.error(
-                    f"Analysis fully failed for job_id={job_id}: {error_msg}"
-                )
+                logger.error(f"Analysis fully failed for job_id={job_id}: {error_msg}")
                 fail_result = FailureAnalysisResult(
                     job_id=job_id,
                     status="failed",
@@ -3812,12 +3820,20 @@ async def re_analyze(
                 )
             unified_fields["raw_xml"] = stored_xml
         elif analysis_type == "prow":
-            for prow_field in ("prow_job_name", "build_id", "prow_url", "gcs_bucket", "gcs_prefix"):
+            for prow_field in (
+                "prow_job_name",
+                "build_id",
+                "prow_url",
+                "gcs_bucket",
+                "gcs_prefix",
+            ):
                 if prow_field in decrypted_params:
                     unified_fields[prow_field] = decrypted_params[prow_field]
             if "force" in decrypted_params:
                 unified_fields["force"] = decrypted_params["force"]
-            if not unified_fields.get("prow_job_name") or not unified_fields.get("build_id"):
+            if not unified_fields.get("prow_job_name") or not unified_fields.get(
+                "build_id"
+            ):
                 raise HTTPException(
                     status_code=400,
                     detail="Original prow analysis has no stored prow_job_name/build_id; cannot re-analyze",

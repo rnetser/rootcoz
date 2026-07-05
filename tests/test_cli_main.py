@@ -2557,7 +2557,13 @@ class TestAnalyzeProwCommand:
         }
         result = runner.invoke(
             app,
-            [*self._PROW_BASE, "--job-name", "periodic-ci-e2e-aws", "--build-number", "1234567890"],
+            [
+                *self._PROW_BASE,
+                "--job-name",
+                "periodic-ci-e2e-aws",
+                "--build-number",
+                "1234567890",
+            ],
         )
         assert result.exit_code == 0
         assert "prow-1" in result.output
@@ -2575,7 +2581,15 @@ class TestAnalyzeProwCommand:
         }
         result = runner.invoke(
             app,
-            [*self._PROW_BASE, "--job-name", "my-job", "--build-number", "42", "--name", "my-prow-analysis"],
+            [
+                *self._PROW_BASE,
+                "--job-name",
+                "my-job",
+                "--build-number",
+                "42",
+                "--name",
+                "my-prow-analysis",
+            ],
         )
         assert result.exit_code == 0
         call_kwargs = mock_client.analyze.call_args[1]
@@ -2591,10 +2605,14 @@ class TestAnalyzeProwCommand:
             app,
             [
                 *self._PROW_BASE,
-                "--job-name", "my-job",
-                "--build-number", "42",
-                "--prow-url", "https://prow.custom.org",
-                "--gcs-bucket", "custom-bucket",
+                "--job-name",
+                "my-job",
+                "--build-number",
+                "42",
+                "--prow-url",
+                "https://prow.custom.org",
+                "--gcs-bucket",
+                "custom-bucket",
             ],
         )
         assert result.exit_code == 0
@@ -2612,10 +2630,14 @@ class TestAnalyzeProwCommand:
             app,
             [
                 *self._PROW_BASE,
-                "--job-name", "my-job",
-                "--build-number", "42",
-                "--provider", "gemini",
-                "--model", "gemini-2.5-pro",
+                "--job-name",
+                "my-job",
+                "--build-number",
+                "42",
+                "--provider",
+                "gemini",
+                "--model",
+                "gemini-2.5-pro",
             ],
         )
         assert result.exit_code == 0
@@ -2630,10 +2652,18 @@ class TestAnalyzeProwCommand:
         }
         result = runner.invoke(
             app,
-            [*self._PROW_BASE, "--job-name", "my-job", "--build-number", "42", "--json"],
+            [
+                *self._PROW_BASE,
+                "--job-name",
+                "my-job",
+                "--build-number",
+                "42",
+                "--json",
+            ],
         )
         assert result.exit_code == 0
         import json
+
         output = json.loads(result.output)
         assert output["job_id"] == "prow-5"
 
@@ -2647,10 +2677,14 @@ class TestAnalyzeProwCommand:
             app,
             [
                 *self._PROW_BASE,
-                "--job-name", "my-job",
-                "--build-number", "42",
-                "--tag", "nightly",
-                "--tag", "regression",
+                "--job-name",
+                "my-job",
+                "--build-number",
+                "42",
+                "--tag",
+                "nightly",
+                "--tag",
+                "regression",
             ],
         )
         assert result.exit_code == 0
