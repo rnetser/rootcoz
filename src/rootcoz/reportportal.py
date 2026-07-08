@@ -461,14 +461,20 @@ class ReportPortalClient:
                 "ignoreAnalyzer": True,
             }
 
+            # Build RP comment: URL link is conditional, but attribution
+            # lines (pushed_by, reviewed_by) are always included.
+            comment_parts: list[str] = []
             if push_rootcoz_url:
-                comment = f"See AI failure analysis under: [rootcoz Failure Analysis]({report_url})"
-                if pushed_by:
-                    comment += f"\nPushed by {pushed_by}"
-                reviewer = reviewed_by.get(failure.test_name, "")
-                if reviewer:
-                    comment += f"\nReviewed by {reviewer}"
-                issue_payload["comment"] = comment
+                comment_parts.append(
+                    f"See AI failure analysis under: [rootcoz Failure Analysis]({report_url})"
+                )
+            if pushed_by:
+                comment_parts.append(f"Pushed by {pushed_by}")
+            reviewer = reviewed_by.get(failure.test_name, "")
+            if reviewer:
+                comment_parts.append(f"Reviewed by {reviewer}")
+            if comment_parts:
+                issue_payload["comment"] = "\n".join(comment_parts)
 
             # Add Jira matches as external issues
             if push_tracker_links:

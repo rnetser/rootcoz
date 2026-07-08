@@ -670,6 +670,17 @@ def _is_child_review_key(key: str) -> bool:
     return hash_char == "#" and bool(child) and build.isdigit()
 
 
+def _extract_reviewer(review_data: dict) -> str:
+    """Extract and sanitize a reviewer username from a review entry.
+
+    Returns the sanitized username, or empty string if the entry is
+    not reviewed or the username is empty/control-char-only.
+    """
+    if not (review_data.get("reviewed") and review_data.get("username")):
+        return ""
+    return _sanitize_control_chars(review_data["username"])
+
+
 def _extract_base_url() -> str:
     """Extract the external base URL for building public-facing links.
 
@@ -6027,40 +6038,28 @@ async def _execute_rp_push(
             # collisions when different children share test names.
             if child_job_name is not None:
                 exact_prefix = f"{child_job_name}#{child_build_number}::"
-                wildcard_prefix = f"{child_job_name}#0::"
                 # Two passes: exact first, then wildcard fallback.
-                # This guarantees exact-build reviews win regardless
-                # of dict iteration order.
-                for pfx in (exact_prefix, wildcard_prefix):
-                    if pfx == exact_prefix and pfx == wildcard_prefix:
-                        # build_number is already 0 — single pass
-                        pass
+                # When build_number is already 0, exact == wildcard → one pass.
+                prefixes: tuple[str, ...] = (exact_prefix,)
+                if child_build_number != 0:
+                    prefixes = (exact_prefix, f"{child_job_name}#0::")
+                for pfx in prefixes:
                     for key, review_data in reviews.items():
-                        if not (
-                            review_data.get("reviewed") and review_data.get("username")
-                        ):
-                            continue
                         if not key.startswith(pfx):
                             continue
-                        bare_name = key[len(pfx) :]
-                        if bare_name not in reviewed_by:
-                            safe = _sanitize_control_chars(review_data["username"])
-                            if safe:
+                        safe = _extract_reviewer(review_data)
+                        if safe:
+                            bare_name = key[len(pfx) :]
+                            if bare_name not in reviewed_by:
                                 reviewed_by[bare_name] = safe
-                    if pfx == exact_prefix and pfx == wildcard_prefix:
-                        break  # already covered both in one pass
             else:
                 for key, review_data in reviews.items():
-                    if not (
-                        review_data.get("reviewed") and review_data.get("username")
-                    ):
-                        continue
                     # Top-level push: skip child-scoped composite keys
                     # (format: "child_name#build_num::test_name" where
                     # build_num is numeric). Test names may contain "::".
                     if _is_child_review_key(key):
                         continue
-                    safe = _sanitize_control_chars(review_data["username"])
+                    safe = _extract_reviewer(review_data)
                     if safe:
                         reviewed_by[key] = safe
         except Exception:

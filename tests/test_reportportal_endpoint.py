@@ -2216,29 +2216,62 @@ class TestPushedByForwarding:
     """Verify pushed_by is threaded from endpoint to push_classifications."""
 
     @staticmethod
-    def _setup_mocks(mock_rp_class, mock_get_result, mock_get_cls):
-        """Configure shared mocks for RP push tests. Returns (mock_rp, client)."""
+    def _setup_mocks(
+        mock_rp_class,
+        mock_get_result,
+        mock_get_cls,
+        *,
+        child_job_name: str = "",
+        child_build_number: int = 0,
+    ):
+        """Configure shared mocks for RP push tests. Returns (mock_rp, client).
+
+        When *child_job_name* is provided, builds a parent/child result
+        structure instead of a flat one.
+        """
         from rootcoz.main import app
 
         mock_get_cls.return_value = ""
-        mock_get_result.return_value = {
-            "status": "completed",
-            "result": {
-                "job_name": "my-job",
-                "build_number": 42,
-                "jenkins_url": "https://jenkins.example.com/job/my-job/42/",
-                "failures": [
-                    {
-                        "test_name": "test_a",
-                        "error": "err",
-                        "analysis": {
-                            "classification": "PRODUCT BUG",
-                            "details": "Bug found",
-                        },
-                    }
-                ],
+
+        failure = {
+            "test_name": "test_a",
+            "error": "err",
+            "analysis": {
+                "classification": "PRODUCT BUG",
+                "details": "Bug found",
             },
         }
+
+        if child_job_name:
+            mock_get_result.return_value = {
+                "status": "completed",
+                "result": {
+                    "job_name": "parent",
+                    "build_number": 1,
+                    "jenkins_url": "https://jenkins.example.com/job/parent/1/",
+                    "failures": [],
+                    "child_job_analyses": [
+                        {
+                            "job_name": child_job_name,
+                            "build_number": child_build_number,
+                            "jenkins_url": f"https://jenkins.example.com/job/{child_job_name}/{child_build_number}/",
+                            "failures": [failure],
+                            "failed_children": [],
+                        },
+                    ],
+                },
+            }
+        else:
+            mock_get_result.return_value = {
+                "status": "completed",
+                "result": {
+                    "job_name": "my-job",
+                    "build_number": 42,
+                    "jenkins_url": "https://jenkins.example.com/job/my-job/42/",
+                    "failures": [failure],
+                },
+            }
+
         mock_rp = MagicMock()
         mock_rp.__enter__ = MagicMock(return_value=mock_rp)
         mock_rp.__exit__ = MagicMock(return_value=False)
@@ -2393,58 +2426,12 @@ class TestPushedByForwarding:
                 "updated_at": "2024-01-01T00:00:00Z",
             },
         }
-        mock_get_cls.return_value = ""
-        mock_get_result.return_value = {
-            "status": "completed",
-            "result": {
-                "job_name": "parent",
-                "build_number": 1,
-                "jenkins_url": "https://jenkins.example.com/job/parent/1/",
-                "failures": [],
-                "child_job_analyses": [
-                    {
-                        "job_name": "child-job",
-                        "build_number": 42,
-                        "jenkins_url": "https://jenkins.example.com/job/child-job/42/",
-                        "failures": [
-                            {
-                                "test_name": "test_a",
-                                "error": "err",
-                                "analysis": {
-                                    "classification": "PRODUCT BUG",
-                                    "details": "Bug found",
-                                },
-                            }
-                        ],
-                        "failed_children": [],
-                    },
-                ],
-            },
-        }
-        mock_rp = MagicMock()
-        mock_rp.__enter__ = MagicMock(return_value=mock_rp)
-        mock_rp.__exit__ = MagicMock(return_value=False)
-        mock_rp.find_launch.return_value = 100
-        mock_rp.get_failed_items.return_value = [
-            {"id": 1, "name": "test_a", "status": "FAILED"}
-        ]
-        mock_rp.match_failures.return_value = [
-            ({"id": 1, "name": "test_a"}, MagicMock(test_name="test_a"))
-        ]
-        mock_rp.push_classifications.return_value = {
-            "pushed": 1,
-            "unmatched": [],
-            "errors": [],
-            "launch_id": 100,
-        }
-        mock_rp_class.return_value = mock_rp
-
-        from rootcoz.main import app
-
-        client = TestClient(
-            app,
-            raise_server_exceptions=False,
-            headers={"Authorization": "Bearer test-admin-key-16chars"},
+        mock_rp, client = self._setup_mocks(
+            mock_rp_class,
+            mock_get_result,
+            mock_get_cls,
+            child_job_name="child-job",
+            child_build_number=42,
         )
         response = client.post(
             "/results/some-job-id/push-reportportal",
@@ -2469,65 +2456,18 @@ class TestPushedByForwarding:
     ):
         """Wildcard child reviews (build_number=0) are accepted for child pushes."""
         mock_get_reviews.return_value = {
-            # Wildcard review (build_number=0 means name-only scope)
             "child-job#0::test_a": {
                 "reviewed": True,
                 "username": "wildcard_reviewer",
                 "updated_at": "2024-01-01T00:00:00Z",
             },
         }
-        mock_get_cls.return_value = ""
-        mock_get_result.return_value = {
-            "status": "completed",
-            "result": {
-                "job_name": "parent",
-                "build_number": 1,
-                "jenkins_url": "https://jenkins.example.com/job/parent/1/",
-                "failures": [],
-                "child_job_analyses": [
-                    {
-                        "job_name": "child-job",
-                        "build_number": 42,
-                        "jenkins_url": "https://jenkins.example.com/job/child-job/42/",
-                        "failures": [
-                            {
-                                "test_name": "test_a",
-                                "error": "err",
-                                "analysis": {
-                                    "classification": "PRODUCT BUG",
-                                    "details": "Bug found",
-                                },
-                            }
-                        ],
-                        "failed_children": [],
-                    },
-                ],
-            },
-        }
-        mock_rp = MagicMock()
-        mock_rp.__enter__ = MagicMock(return_value=mock_rp)
-        mock_rp.__exit__ = MagicMock(return_value=False)
-        mock_rp.find_launch.return_value = 100
-        mock_rp.get_failed_items.return_value = [
-            {"id": 1, "name": "test_a", "status": "FAILED"}
-        ]
-        mock_rp.match_failures.return_value = [
-            ({"id": 1, "name": "test_a"}, MagicMock(test_name="test_a"))
-        ]
-        mock_rp.push_classifications.return_value = {
-            "pushed": 1,
-            "unmatched": [],
-            "errors": [],
-            "launch_id": 100,
-        }
-        mock_rp_class.return_value = mock_rp
-
-        from rootcoz.main import app
-
-        client = TestClient(
-            app,
-            raise_server_exceptions=False,
-            headers={"Authorization": "Bearer test-admin-key-16chars"},
+        mock_rp, client = self._setup_mocks(
+            mock_rp_class,
+            mock_get_result,
+            mock_get_cls,
+            child_job_name="child-job",
+            child_build_number=42,
         )
         response = client.post(
             "/results/some-job-id/push-reportportal",
@@ -2563,58 +2503,12 @@ class TestPushedByForwarding:
                 "updated_at": "2024-01-01T00:00:00Z",
             },
         }
-        mock_get_cls.return_value = ""
-        mock_get_result.return_value = {
-            "status": "completed",
-            "result": {
-                "job_name": "parent",
-                "build_number": 1,
-                "jenkins_url": "https://jenkins.example.com/job/parent/1/",
-                "failures": [],
-                "child_job_analyses": [
-                    {
-                        "job_name": "child-job",
-                        "build_number": 42,
-                        "jenkins_url": "https://jenkins.example.com/job/child-job/42/",
-                        "failures": [
-                            {
-                                "test_name": "test_a",
-                                "error": "err",
-                                "analysis": {
-                                    "classification": "PRODUCT BUG",
-                                    "details": "Bug found",
-                                },
-                            }
-                        ],
-                        "failed_children": [],
-                    },
-                ],
-            },
-        }
-        mock_rp = MagicMock()
-        mock_rp.__enter__ = MagicMock(return_value=mock_rp)
-        mock_rp.__exit__ = MagicMock(return_value=False)
-        mock_rp.find_launch.return_value = 100
-        mock_rp.get_failed_items.return_value = [
-            {"id": 1, "name": "test_a", "status": "FAILED"}
-        ]
-        mock_rp.match_failures.return_value = [
-            ({"id": 1, "name": "test_a"}, MagicMock(test_name="test_a"))
-        ]
-        mock_rp.push_classifications.return_value = {
-            "pushed": 1,
-            "unmatched": [],
-            "errors": [],
-            "launch_id": 100,
-        }
-        mock_rp_class.return_value = mock_rp
-
-        from rootcoz.main import app
-
-        client = TestClient(
-            app,
-            raise_server_exceptions=False,
-            headers={"Authorization": "Bearer test-admin-key-16chars"},
+        mock_rp, client = self._setup_mocks(
+            mock_rp_class,
+            mock_get_result,
+            mock_get_cls,
+            child_job_name="child-job",
+            child_build_number=42,
         )
         response = client.post(
             "/results/some-job-id/push-reportportal",
