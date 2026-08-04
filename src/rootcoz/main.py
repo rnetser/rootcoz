@@ -908,6 +908,7 @@ _ANALYSIS_SETTINGS_FIELDS = (
     "github_token",
     "ai_call_timeout",
     "max_concurrent_ai_calls",
+    "metadata_labels",
 )
 
 
@@ -990,6 +991,7 @@ def _reconstruct_from_params(
         "tests_repo_token": (
             params["tests_repo_token"] if "tests_repo_token" in params else None
         ),
+        "metadata_labels": params.get("metadata_labels", []),
     }
     for jenkins_field in (
         "jenkins_url",
@@ -2607,13 +2609,19 @@ _AI_SESSION_TTL_HOURS = 8  # Short-lived for AI internal API calls
 
 
 async def _auto_assign_metadata(
-    display_name: str, metadata_rules: list[dict] | None
+    display_name: str,
+    metadata_rules: list[dict] | None,
+    extra_labels: list[str] | None = None,
 ) -> None:
-    """Best-effort metadata auto-assignment."""
-    if not metadata_rules:
+    """Best-effort metadata auto-assignment and optional label merge."""
+    rules = metadata_rules or []
+    extras = extra_labels or []
+    if not rules and not extras:
         return
     try:
-        await storage.auto_assign_job_metadata(display_name, metadata_rules)
+        await storage.auto_assign_job_metadata(
+            display_name, rules, extra_labels=extras or None
+        )
     except Exception:
         logger.warning(
             "Failed to auto-assign metadata for job '%s'",
@@ -2950,6 +2958,9 @@ def _apply_base_analysis_overrides(
     # Always persist peer_analysis_max_rounds so non-default values survive
     # re-analyze round-trips.
     params["peer_analysis_max_rounds"] = merged.peer_analysis_max_rounds
+    # Persist metadata_labels for resume/re-analyze round-trips
+    if body.metadata_labels:
+        params["metadata_labels"] = body.metadata_labels
 
 
 def _stamp_reanalysis_metadata(
@@ -3180,6 +3191,7 @@ async def _analyze_failures_or_exit(
     auth_header: str,
     groups: dict[str, list],
     source_result: CISourceResult | None,
+    extra_labels: list[str] | None = None,
 ) -> tuple[list, list, int] | None:
     """Resolve console-only / no-failure / junit analysis paths.
 
@@ -3271,7 +3283,9 @@ async def _analyze_failures_or_exit(
         notify_active_count_changed()
         notify_dashboard_changed()
         notify_job_status_changed(job_id)
-        await _auto_assign_metadata(metadata_job_name, merged.metadata_rules)
+        await _auto_assign_metadata(
+            metadata_job_name, merged.metadata_rules, extra_labels=extra_labels
+        )
         return None
 
     # Normal path: structured test failures
@@ -3376,6 +3390,7 @@ async def _process_ci_source_analysis(
     source: CISource | None = None  # set after source creation; used by cleanup
     source_result = None  # set after source.fetch(); used by _stamp_source_warnings
     metadata_job_name = display_name  # updated from source_result.identity after fetch
+    extra_labels = body.metadata_labels or None
 
     try:
         logger.info(
@@ -3448,8 +3463,12 @@ async def _process_ci_source_analysis(
             notify_dashboard_changed()
             notify_job_status_changed(job_id)
 
-            # Auto-assign job metadata from name pattern rules
-            await _auto_assign_metadata(metadata_job_name, merged.metadata_rules)
+            # Auto-assign job metadata from name pattern rules / request labels
+            await _auto_assign_metadata(
+                metadata_job_name,
+                merged.metadata_rules,
+                extra_labels=extra_labels,
+            )
 
             return
 
@@ -3745,7 +3764,11 @@ async def _process_ci_source_analysis(
                 notify_dashboard_changed()
                 notify_job_status_changed(job_id)
                 notify_token_usage_changed()
-                await _auto_assign_metadata(metadata_job_name, merged.metadata_rules)
+                await _auto_assign_metadata(
+                    metadata_job_name,
+                    merged.metadata_rules,
+                    extra_labels=extra_labels,
+                )
                 await storage.make_classifications_visible(job_id)
                 return
 
@@ -3767,6 +3790,7 @@ async def _process_ci_source_analysis(
             auth_header=auth_header,
             groups=groups,
             source_result=source_result,
+            extra_labels=extra_labels,
         )
         if analysis_result_tuple is None:
             return
@@ -3878,8 +3902,12 @@ async def _process_ci_source_analysis(
         notify_job_status_changed(job_id)
         notify_token_usage_changed()
 
-        # Auto-assign job metadata from name pattern rules
-        await _auto_assign_metadata(metadata_job_name, merged.metadata_rules)
+        # Auto-assign job metadata from name pattern rules / request labels
+        await _auto_assign_metadata(
+            metadata_job_name,
+            merged.metadata_rules,
+            extra_labels=extra_labels,
+        )
 
         # Reveal classifications created during analysis
         await storage.make_classifications_visible(job_id)

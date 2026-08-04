@@ -81,7 +81,20 @@ _JSON_OPTION = typer.Option(False, "--json", help="Output as JSON instead of tab
 
 # Config subcommands that require a server connection (all others are local-only).
 _SERVER_CONFIG_SUBCOMMANDS = frozenset({"defaults"})
+
+
+def _split_csv(value: str) -> list[str]:
+    """Split a comma-separated string into a stripped, non-empty list."""
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
 _TAG_OPTION = typer.Option([], "--tag", help="Tag for categorization (repeatable).")
+_ANALYZE_LABEL_OPTION = typer.Option(
+    [],
+    "--label",
+    "-l",
+    help="Job metadata label to merge on analyze (repeatable). Distinct from --tag.",
+)
 
 # ---------------------------------------------------------------------------
 # Shared analysis option types (used by analyze and future CI source backends)
@@ -1257,6 +1270,7 @@ def analyze(
     force: _ForceOpt = None,
     max_concurrent: _MaxConcurrentOpt = 0,
     tags: list[str] = _TAG_OPTION,
+    label: list[str] = _ANALYZE_LABEL_OPTION,
     json_output: bool = _JSON_OPTION,
 ):
     """Submit an analysis job (Jenkins, JUnit XML file, or Prow CI)."""
@@ -1390,6 +1404,11 @@ def analyze(
 
     if tags:
         extras["tags"] = tags
+
+    if label:
+        extras["metadata_labels"] = label
+    elif cfg and cfg.metadata_labels.strip():
+        extras["metadata_labels"] = _split_csv(cfg.metadata_labels)
 
     # Strip Jenkins-specific fields for non-Jenkins sources
     if source in ("file", "prow"):

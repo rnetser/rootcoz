@@ -385,6 +385,7 @@ class RootCozClient:
         *,
         name: str = "",
         tags: list[str] | None = None,
+        metadata_labels: list[str] | None = None,
         **kwargs,
     ) -> dict:
         """Submit an analysis job. POST /analyze
@@ -397,6 +398,8 @@ class RootCozClient:
             build_number: Jenkins build number (when type=jenkins).
             name: Display name for this analysis on the dashboard.
             tags: Optional list of tags for categorization.
+            metadata_labels: Optional job-side labels to merge into
+                ``job_metadata.labels``.
             **kwargs: Additional fields (type, prow_job_name, build_id, etc.).
 
         Returns:
@@ -415,6 +418,8 @@ class RootCozClient:
             body["name"] = name
         if tags:
             body["tags"] = tags
+        if metadata_labels:
+            body["metadata_labels"] = metadata_labels
         return self._request(
             "POST",
             "/analyze",
@@ -428,6 +433,7 @@ class RootCozClient:
         *,
         name: str = "",
         tags: list[str] | None = None,
+        metadata_labels: list[str] | None = None,
         **kwargs,
     ) -> dict:
         """Submit JUnit XML for analysis. POST /analyze with type=file
@@ -436,6 +442,8 @@ class RootCozClient:
             raw_xml: JUnit XML content as a string.
             name: Display name for this analysis on the dashboard.
             tags: Optional list of tags for categorization.
+            metadata_labels: Optional job-side labels to merge into
+                ``job_metadata.labels``.
             **kwargs: Additional fields for the UnifiedAnalyzeRequest body.
 
         Returns:
@@ -448,6 +456,8 @@ class RootCozClient:
             body["name"] = name
         if tags:
             body["tags"] = tags
+        if metadata_labels:
+            body["metadata_labels"] = metadata_labels
         return self._request(
             "POST",
             "/analyze",

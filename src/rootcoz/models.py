@@ -25,7 +25,7 @@ from rootcoz.prow_validation import (
     validate_prow_job_name,
 )
 
-_SYSTEM_TAGS: set[str] = {"re-analyze"}
+_SYSTEM_TAGS: frozenset[str] = frozenset({"re-analyze"})
 
 _TUrl = TypeVar("_TUrl", bound=HttpUrl | str | None)
 
@@ -46,21 +46,51 @@ def _uuid_str() -> str:
     return str(uuid4())
 
 
-def _normalize_tags_list(tags: object) -> list[str]:
-    """Strip, lowercase, deduplicate, remove blanks and reserved system tags."""
-    if not isinstance(tags, (list, tuple, set)):
-        raise ValueError("tags must be a list")
+def _normalize_string_list(
+    items: object,
+    *,
+    field_name: str = "items",
+    lowercase: bool = False,
+    blocked: frozenset[str] = frozenset(),
+) -> list[str]:
+    """Strip, deduplicate, and remove blanks from a list of strings.
+
+    Args:
+        items: Raw input (must be list/tuple/set).
+        field_name: Name for error messages.
+        lowercase: When True, normalize to lowercase before dedup.
+        blocked: Set of values to exclude (matched after case normalization).
+
+    Returns:
+        Order-preserved, deduplicated list.
+    """
+    if not isinstance(items, (list, tuple, set)):
+        raise ValueError(f"{field_name} must be a list")
 
     seen: set[str] = set()
     result: list[str] = []
-    for tag in tags:
-        if not isinstance(tag, str):
+    for item in items:
+        if not isinstance(item, str):
             continue
-        t = tag.strip().lower()
-        if t and t not in seen and t not in _SYSTEM_TAGS:
+        t = item.strip()
+        if lowercase:
+            t = t.lower()
+        if t and t not in seen and t not in blocked:
             seen.add(t)
             result.append(t)
     return result
+
+
+def _normalize_tags_list(tags: object) -> list[str]:
+    """Strip, lowercase, deduplicate, remove blanks and reserved system tags."""
+    return _normalize_string_list(
+        tags, field_name="tags", lowercase=True, blocked=_SYSTEM_TAGS
+    )
+
+
+def _normalize_metadata_labels(labels: object) -> list[str]:
+    """Strip, deduplicate, remove blanks; preserve case (job-side labels)."""
+    return _normalize_string_list(labels, field_name="metadata_labels")
 
 
 AiProviderName = Literal[
@@ -234,6 +264,13 @@ class BaseAnalysisRequest(BaseModel):
             "Omit to inherit the server default; send [] to disable."
         ),
     )
+    metadata_labels: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Job-side metadata labels to merge into job_metadata.labels "
+            "(appended and deduplicated; does not replace rule-assigned labels)."
+        ),
+    )
 
     @field_validator("tests_repo_token")
     @classmethod
@@ -242,6 +279,11 @@ class BaseAnalysisRequest(BaseModel):
             return None
         stripped = v.strip()
         return stripped or None
+
+    @field_validator("metadata_labels", mode="before")
+    @classmethod
+    def _normalize_metadata_labels_field(cls, v: list) -> list[str]:
+        return _normalize_metadata_labels(v)
 
     @field_validator("additional_repos")
     @classmethod
