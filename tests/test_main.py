@@ -7090,8 +7090,9 @@ class TestSubmitIntake:
         assert first.status_code == 202, first.text
         assert second.status_code == 409
 
+    @pytest.mark.parametrize("previous_status", ["completed", "failed"])
     def test_in_place_analyze_releases_claim_when_enqueue_fails(
-        self, test_client
+        self, test_client, previous_status: str
     ) -> None:
         from fastapi import HTTPException
 
@@ -7104,7 +7105,7 @@ class TestSubmitIntake:
             },
         )
         job_id = data["job_id"]
-        asyncio.run(storage.update_status(job_id, "completed"))
+        asyncio.run(storage.update_status(job_id, previous_status))
         analyze_body = {"ai_provider": "claude", "ai_model": "test-model"}
         with patch(
             "rootcoz.main._enqueue_ci_source_analysis",
@@ -7113,35 +7114,10 @@ class TestSubmitIntake:
             failed = test_client.post(f"/results/{job_id}/analyze", json=analyze_body)
         assert failed.status_code == 422
         stored = test_client.get(f"/results/{job_id}").json()
-        assert stored["status"] == "completed"
+        assert stored["status"] == previous_status
         with patch("rootcoz.main._process_ci_source_analysis", new_callable=AsyncMock):
             retry = test_client.post(f"/results/{job_id}/analyze", json=analyze_body)
         assert retry.status_code == 202, retry.text
-
-    def test_in_place_analyze_release_keeps_failed_ingest_status(
-        self, test_client
-    ) -> None:
-        from fastapi import HTTPException
-
-        data, _ = _post_submit_queued(
-            test_client,
-            {
-                "type": "jenkins",
-                "job_name": "test-job",
-                "build_number": 1,
-            },
-        )
-        job_id = data["job_id"]
-        asyncio.run(storage.update_status(job_id, "failed"))
-        analyze_body = {"ai_provider": "claude", "ai_model": "test-model"}
-        with patch(
-            "rootcoz.main._enqueue_ci_source_analysis",
-            side_effect=HTTPException(status_code=422, detail="enqueue failed"),
-        ):
-            failed = test_client.post(f"/results/{job_id}/analyze", json=analyze_body)
-        assert failed.status_code == 422
-        stored = test_client.get(f"/results/{job_id}").json()
-        assert stored["status"] == "failed"
 
     def test_dashboard_analysis_state_filter(self, test_client) -> None:
         ok = test_client.get(
